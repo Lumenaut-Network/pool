@@ -1,9 +1,14 @@
 import sqlite3, json, base64
-from stellar_base.builder import Builder
-from stellar_base.operation import Payment
 from stellar_base.asset import Asset
+from stellar_base.keypair import Keypair
+from stellar_base.operation import Payment
+from stellar_base.transaction import Transaction
+from stellar_base.transaction_envelope import TransactionEnvelope as Te
+from stellar_base.memo import TextMemo
+from stellar_base.horizon import horizon_testnet, horizon_livenet
 
-pool_address = "GC47XBPNBJS7RNHIDS2KRGO7YJDOHBBB2RFLXJLWS7CWZIPSOAO62HTP"
+pool_address = "GCVZ3HYCSIPFBNCRULIGJJOYQOPML23GIV354DVRESQYLE3MUE3ZE5DE"
+pool_key = "SDWIXXDLGGXKLIJ5ZSMN32I3WDGTD2GPKDU7B5OGTYAN7RZZX2RFF5GL"
 network = "TESTNET"
 db_address = "../stellar-core/stellar.db"
 
@@ -55,12 +60,23 @@ def main():
 	transactions = []
 
 	key = input("Signing Key: ")
+	curr_builder = None
+	horizon = horizon_testnet()
+	sequence = horizon.account(pool_address).get('sequence')
+
 	for batch in accounts_payout(conn, pool_address):
 		operations = [make_payment_op(aid, amount) for aid, amount in batch]
-		tx = Builder(secret = key, network = network)
+		tx = Transaction(source = pool_address,
+			opts = {
+				'sequence': sequence,
+				'operations': []
+			}
+		)
 		tx.ops.extend(operations)
-		tx.sign()
-		transactions.append(tx.gen_xdr().decode("ASCII"))
+		envelope = Te(tx=tx, opts={"network_id": network})
+		envelope.sign(key)
+		transactions.append(envelope.xdr().decode("utf-8"))
+		sequence += 1
 
 	with open("transactions.dat", 'w') as outf:
 		json.dump(transactions, outf)
