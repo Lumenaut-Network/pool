@@ -10,14 +10,14 @@ with open("transactions.dat", 'r') as tfile:
 
 key = input("Signing Key: ")
 amt_signed = 0
-needed = 5
+needed = 3
 transactions = []
 for xdr in transactions_unsigned:
-	builder = Builder(secret = key, network=TESTNET)
+	builder = Builder(secret = key, network=network)
 	builder.import_from_xdr(xdr)
 	amt_signed = len(builder.te.signatures) + 1
 	builder.sign()
-	transactions.append(builder.gen_xdr().decode("ASCII"))
+	transactions.append(builder.gen_xdr().decode("utf-8"))
 
 print("Added signature. Transactions now signed by %s/%s parties." % (str(amt_signed), str(needed)))
 

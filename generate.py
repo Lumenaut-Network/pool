@@ -5,7 +5,7 @@ from stellar_base.asset import Asset
 
 pool_address = "GC47XBPNBJS7RNHIDS2KRGO7YJDOHBBB2RFLXJLWS7CWZIPSOAO62HTP"
 network = "TESTNET"
-db_address = "stellar-core/stellar.db"
+db_address = "../stellar-core/stellar.db"
 
 # credit to francesco for this
 
