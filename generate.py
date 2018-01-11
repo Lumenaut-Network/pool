@@ -7,6 +7,8 @@ pool_address = "GC47XBPNBJS7RNHIDS2KRGO7YJDOHBBB2RFLXJLWS7CWZIPSOAO62HTP"
 network = "TESTNET"
 db_address = "stellar-core/stellar.db"
 
+# credit to francesco for this
+
 def total_accounts_balance(conn, pool_addr):
 	cur = conn.cursor()
 	cur.execute("SELECT sum(balance) FROM accounts WHERE inflationdest=?", (pool_addr, ))
