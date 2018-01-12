@@ -10,7 +10,7 @@ with open('signers.txt') as f:
 	signers = f.read().splitlines()
 
 kp = None
-if len(sys.argv > 1):
+if len(sys.argv) > 1:
 	desired_tail = sys.argv[1]
 
 	print("looking for address ending in '" + desired_tail + "'...")
