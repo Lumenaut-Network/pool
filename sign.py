@@ -22,12 +22,12 @@ for xdr in transactions_unsigned:
 print("Added signature. Transactions now signed by %s/%s parties." % (str(amt_signed), str(needed)))
 
 if amt_signed >= needed:
-	print("Submitting...")
-	for xdr in transactions:
-		builder = Builder(secret = key)
-		builder.import_from_xdr(xdr)
-		builder.submit()
-else:
+	#print("Submitting...")
+	#for xdr in transactions:
+		#builder = Builder(secret = key)
+		#builder.import_from_xdr(xdr)
+		#builder.submit()
+#else:
 	print("Updating transactions.dat")
 	with open("transactions.dat", 'w') as outf:
 		json.dump(transactions, outf)
