@@ -9,14 +9,17 @@ signers = []
 with open('signers.txt') as f:
 	signers = f.read().splitlines()
 
-desired_tail = sys.argv[1]
-
-print("looking for address ending in '" + desired_tail + "'...")
 kp = None
-while True:
+if len(sys.argv > 1):
+	desired_tail = sys.argv[1]
+
+	print("looking for address ending in '" + desired_tail + "'...")
+	while True:
+		kp = Keypair.random()
+		if kp.address().decode()[-len(desired_tail):] == desired_tail:
+			break
+else:
 	kp = Keypair.random()
-	if kp.address().decode()[-len(desired_tail):] == desired_tail:
-		break
 
 pool_address = kp.address().decode()
 
