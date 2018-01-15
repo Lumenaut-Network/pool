@@ -38,7 +38,7 @@ def add_donation(donation, payout):
 
 def calculate_payout(cur, inflation, total_balance, aid, bal, donation):
 	fee = BASE_FEE * (donation and 2 or 1)
-	bal = Decimal(bal - fee) / XLM_STROOP
+	bal = Decimal(bal) / XLM_STROOP
 	bal_pct = bal / total_balance
 	payout = XLM_Decimal(inflation * bal_pct) - XLM_Decimal(fee / XLM_STROOP)
 
