@@ -37,8 +37,9 @@ def add_donation(donation, payout):
 	return pct
 
 def calculate_payout(cur, inflation, total_balance, aid, bal, donation):
-	bal = Decimal(bal - BASE_FEE * 2) / XLM_STROOP # amount in lumens (take 200 stroops each to cover transaction fees)
-	bal_pct = bal / total_balance # higher precision
+	fee = BASE_FEE * (donation and 2 or 1)
+	bal = Decimal(bal - fee) / XLM_STROOP
+	bal_pct = bal / total_balance
 	payout = XLM_Decimal(inflation * bal_pct)
 
 	donation_cut = 0
