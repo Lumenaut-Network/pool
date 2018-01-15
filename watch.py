@@ -1,5 +1,5 @@
 import json
-from calculate import main as start_payout
+from generate import main as start_payout
 from stellar_base.horizon import horizon_testnet, horizon_livenet
 
 print("Connecting to horizon-testnet...")
