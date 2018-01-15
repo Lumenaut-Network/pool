@@ -40,7 +40,7 @@ def calculate_payout(cur, inflation, total_balance, aid, bal, donation):
 	fee = BASE_FEE * (donation and 2 or 1)
 	bal = Decimal(bal - fee) / XLM_STROOP
 	bal_pct = bal / total_balance
-	payout = XLM_Decimal(inflation * bal_pct)
+	payout = XLM_Decimal(inflation * bal_pct) - XLM_Decimal(fee / XLM_STROOP)
 
 	donation_cut = 0
 	if donation:
@@ -102,8 +102,8 @@ def main(inflation):
 		envelope = Te(tx = tx, opts = {"network_id": network})
 		transactions.append(envelope.xdr().decode("utf-8"))
 
-		total_fee_cost += tx.fee / XLM_STROOP
-		total_payments_cost += sum([Decimal(payment.amount) for payment in tx.operations])
+		total_fee_cost += XLM_Decimal(tx.fee) / XLM_STROOP
+		total_payments_cost += sum([XLM_Decimal(payment.amount) for payment in tx.operations])
 		num_payments += len(tx.operations)
 
 		sequence = int(sequence) + 1
