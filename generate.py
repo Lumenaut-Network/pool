@@ -1,5 +1,6 @@
 import sqlite3, json, base64
 from decimal import *
+from math import min
 
 from stellar_base.asset import Asset
 from stellar_base.keypair import Keypair
@@ -23,7 +24,7 @@ def XLM_Decimal(n):
 
 def add_donation(donation, payout):
 	donation = base64.b64decode(donation).decode("utf-8")
-	pct, address = Decimal(int(donation[:3]) / 100).quantize(Decimal('.01')), donation[3:]
+	pct, address = Decimal(min(int(donation[:3]), 100) / 100).quantize(Decimal('.01')), donation[3:]
 	amt = XLM_Decimal(payout * pct)
 	if address in donations.keys():
 		donations[address] += amt
@@ -60,7 +61,7 @@ def accounts_payout(conn, pool_addr, size=100):
 			donation_payouts.append(batch)
 			batch = []
 	donation_payouts.append(batch)
-	
+
 	payouts.extend(donation_payouts)
 	return payouts
 
