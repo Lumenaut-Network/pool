@@ -119,9 +119,9 @@ def main(inflation):
 		" different addresses.\n"
 	)
 
-	with open("transactions.dat", 'w') as outf:
+	with open("transactions.json", 'w') as outf:
 		json.dump(transactions, outf)
-	print("Done. Output to transactions.dat")
+	print("Done. Output to transactions.json")
 
 TEST_AMT = 49855.2650163
 if __name__ == '__main__': main(TEST_AMT)

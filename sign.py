@@ -6,7 +6,7 @@ from stellar_base.horizon import horizon_testnet, horizon_livenet
 network = "TESTNET"
 
 transactions_unsigned = []
-with open("transactions.dat", 'r') as tfile:
+with open("transactions.json", 'r') as tfile:
 	transactions_unsigned = json.load(tfile)
 
 key = input("Signing Key: ")
@@ -34,6 +34,6 @@ if amt_signed >= needed:
 		except Exception as e:
 			raise e
 else:
-	print("Updating transactions.dat")
-	with open("transactions.dat", 'w') as outf:
+	print("Updating transactions.json")
+	with open("transactions.json", 'w') as outf:
 		json.dump(transactions, outf)
