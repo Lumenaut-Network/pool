@@ -1,4 +1,5 @@
 from stellar_base.keypair import Keypair
+from stellar_base.utils import DecodeError
 from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
 from stellar_base.operation import SetOptions
@@ -39,7 +40,7 @@ def create_pool_account(pool_keypair):
 	funding_account_kp = None
 	try:
 		funding_account_kp = Keypair.from_seed(input("Funding acount secret key: "))
-	except:
+	except DecodeError:
 		print("Invalid secret key, aborting")
 		return False
 
