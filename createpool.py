@@ -1,5 +1,6 @@
 import logging
-import sys
+
+import click
 
 from stellar_base.keypair import Keypair
 from stellar_base.utils import DecodeError
@@ -7,7 +8,7 @@ from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
 from stellar_base.operation import SetOptions
 from stellar_base.operation import CreateAccount
-from stellar_base.horizon import horizon_livenet
+from stellar_base.horizon import horizon_livenet, horizon_testnet
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +40,12 @@ def generate_pool_keypair(desired_tail=None):
 	return kp
 
 
-def create_pool_account(pool_keypair):
+def create_pool_account(horizon, network_id, account_secret_key, pool_keypair):
 	funding_account_kp = None
 	try:
-		funding_account_kp = Keypair.from_seed(input("Funding acount secret key: "))
+		funding_account_kp = Keypair.from_seed(account_secret_key)
 	except DecodeError:
-		print("Invalid secret key, aborting")
+		logger.error("Invalid secret key, aborting")
 		return False
 
 	creation_operation = CreateAccount({
@@ -63,18 +64,18 @@ def create_pool_account(pool_keypair):
 		},
 	)
 
-	envelope = Te(tx=tx, opts={"network_id": network})
+	envelope = Te(tx=tx, opts={"network_id": network_id})
 	envelope.sign(funding_account_kp)
 
 	xdr = envelope.xdr()
 	response = horizon.submit(xdr)
 	if "_links" in response:
-		print("Creation of account transaction link: %s" % (
+		logger.debug("Creation of account transaction link: %s" % (
 			response["_links"]["transaction"]["href"],))
 		return True
 	else:
-		print("Failed to create account. Dumping response:")
-		print(response)
+		logger.error("Failed to create account. Dumping response:")
+		logger.error(response)
 		return False
 
 
@@ -136,13 +137,19 @@ def set_account_signers(pool_keypair, threshold):
 		print(response)
 
 
-def main():
-	pool_kp = generate_pool_keypair(sys.argv[1] if sys.argv else None)
+@click.command()
+@click.option('--desired-tail', type=str, default=None)
+@click.option('--funding-account-secret-key', type=str, prompt=True)
+@click.option('--network-id', type=click.Choice(['TESTNET', 'PUBLIC']))
+def main(desired_tail, funding_account_secret_key, network_id):
+	horizon = (horizon_livenet() if network == 'PUBLIC' else horizon_testnet())
+	pool_kp = generate_pool_keypair(desired_tail)
 	print("Pool keypair: %s | %s" % (
 		pool_kp.address().decode(), pool_kp.seed().decode()))
 
-	if create_pool_account(pool_kp):
-		set_account_signers(pool_kp, SIGNING_THRESHOLD)
+	if create_pool_account(
+		horizon, network_id, funding_account_secret_key, pool_kp):
+			set_account_signers(pool_kp, SIGNING_THRESHOLD)
 
 
 if __name__ == "__main__":
