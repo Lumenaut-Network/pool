@@ -13,8 +13,8 @@ SIGNING_THRESHOLD = {
 }
 STARTING_BALANCE = "5"
 
-network = "TESTNET"
-horizon = horizon_testnet()
+network = "PUBLIC"
+horizon = horizon_livenet()
 
 def generate_pool_keypair():
 	kp = None
