@@ -1,0 +1,15 @@
+language: python
+python:
+  - '3.4'
+  - '3.5'
+  - '3.6'
+
+before_install:
+  - sudo apt-get install -y python-dev
+
+install:
+  - pip install -r requirements.txt
+  - pip install -r requirements-dev.txt
+
+script:
+  - flake8
