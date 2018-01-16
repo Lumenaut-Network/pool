@@ -1,1 +1,2 @@
 stellar-base==0.1.5
+click==6.7

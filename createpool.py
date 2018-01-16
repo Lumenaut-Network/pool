@@ -1,11 +1,16 @@
+import logging
+
+import click
+
 from stellar_base.keypair import Keypair
 from stellar_base.utils import DecodeError
 from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
 from stellar_base.operation import SetOptions
 from stellar_base.operation import CreateAccount
-from stellar_base.horizon import horizon_livenet
-import sys
+from stellar_base.horizon import horizon_livenet, horizon_testnet
+
+logger = logging.getLogger(__name__)
 
 
 SIGNING_THRESHOLD = {
@@ -16,16 +21,14 @@ SIGNING_THRESHOLD = {
 STARTING_BALANCE = "5"
 
 network = "PUBLIC"
-horizon = horizon_livenet()
 
 
-def generate_pool_keypair():
+def generate_pool_keypair(desired_tail=None):
 	kp = None
 
-	if len(sys.argv) > 1:
-		desired_tail = sys.argv[1]
+	if desired_tail:
 
-		print("Looking for address ending in '" + desired_tail + "'...")
+		logger.debug("Looking for address ending in '%s'..." % (desired_tail,))
 		while True:
 			kp = Keypair.random()
 			if kp.address().decode()[-len(desired_tail):] == desired_tail:
@@ -36,12 +39,12 @@ def generate_pool_keypair():
 	return kp
 
 
-def create_pool_account(pool_keypair):
+def create_pool_account(horizon, network_id, account_secret_key, pool_keypair):
 	funding_account_kp = None
 	try:
-		funding_account_kp = Keypair.from_seed(input("Funding acount secret key: "))
+		funding_account_kp = Keypair.from_seed(account_secret_key)
 	except DecodeError:
-		print("Invalid secret key, aborting")
+		logger.error("Invalid secret key, aborting")
 		return False
 
 	creation_operation = CreateAccount({
@@ -60,29 +63,29 @@ def create_pool_account(pool_keypair):
 		},
 	)
 
-	envelope = Te(tx=tx, opts={"network_id": network})
+	envelope = Te(tx=tx, opts={"network_id": network_id})
 	envelope.sign(funding_account_kp)
 
 	xdr = envelope.xdr()
 	response = horizon.submit(xdr)
 	if "_links" in response:
-		print("Creation of account transaction link: %s" % (
+		logger.debug("Creation of account transaction link: %s" % (
 			response["_links"]["transaction"]["href"],))
 		return True
 	else:
-		print("Failed to create account. Dumping response:")
-		print(response)
+		logger.error("Failed to create account. Dumping response:")
+		logger.error(response)
 		return False
 
 
-def get_signers():
+def get_signers(file_path):
 	signers = []
-	with open('signers.txt') as f:
+	with open(file_path) as f:
 		signers = f.read().splitlines()
 	return signers
 
 
-def set_account_signers(pool_keypair, threshold):
+def set_account_signers(horizon, pool_keypair, signers, threshold):
 	pool_address = pool_keypair.address().decode()
 
 	operations = [
@@ -92,7 +95,7 @@ def set_account_signers(pool_keypair, threshold):
 			"signer_type": "ed25519PublicKey",
 			"source_account": pool_address
 		})
-		for signer_address in get_signers()
+		for signer_address in signers
 	]
 
 	operations.append(
@@ -124,22 +127,35 @@ def set_account_signers(pool_keypair, threshold):
 	response = horizon.submit(xdr)
 
 	if "_links" in response:
-		print(
+		logger.debug(
 			"Set options transaction href: ",
 			response["_links"]["transaction"]["href"])
-		print("Created successfully!")
+		logger.debug("Created successfully!")
+		return True
 	else:
-		print("Failed to set account signers, dumping response:")
-		print(response)
+		logger.error("Failed to set account signers, dumping response:")
+		logger.error(response)
+		return False
 
 
-def main():
-	pool_kp = generate_pool_keypair()
-	print("Pool keypair: %s | %s" % (
+@click.command()
+@click.option('--desired-tail', type=str, default=None)
+@click.option('--funding-account-secret-key', type=str, prompt=True)
+@click.option('--network-id', type=click.Choice(['TESTNET', 'PUBLIC']))
+@click.option(
+	'--signers-file', type=click.Path(exists=True), default='signers.txt')
+def main(
+	desired_tail, funding_account_secret_key, network_id, signers_file):
+
+	horizon = (horizon_livenet() if network == 'PUBLIC' else horizon_testnet())
+	pool_kp = generate_pool_keypair(desired_tail)
+	logger.info("Pool keypair: %s | %s" % (
 		pool_kp.address().decode(), pool_kp.seed().decode()))
 
-	if create_pool_account(pool_kp):
-		set_account_signers(pool_kp, SIGNING_THRESHOLD)
+	if create_pool_account(
+		horizon, network_id, funding_account_secret_key, pool_kp):
+			signers = get_signers(signers_file)
+			set_account_signers(horizon, pool_kp, signers, SIGNING_THRESHOLD)
 
 
 if __name__ == "__main__":
