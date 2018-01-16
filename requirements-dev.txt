@@ -1,1 +1,4 @@
 flake8
+mock
+pytest
+pytest-xdist

@@ -1,3 +1,6 @@
+import logging
+import sys
+
 from stellar_base.keypair import Keypair
 from stellar_base.utils import DecodeError
 from stellar_base.transaction import Transaction
@@ -5,7 +8,8 @@ from stellar_base.transaction_envelope import TransactionEnvelope as Te
 from stellar_base.operation import SetOptions
 from stellar_base.operation import CreateAccount
 from stellar_base.horizon import horizon_livenet
-import sys
+
+logger = logging.getLogger(__name__)
 
 
 SIGNING_THRESHOLD = {
@@ -19,13 +23,12 @@ network = "PUBLIC"
 horizon = horizon_livenet()
 
 
-def generate_pool_keypair():
+def generate_pool_keypair(desired_tail=None):
 	kp = None
 
-	if len(sys.argv) > 1:
-		desired_tail = sys.argv[1]
+	if desired_tail:
 
-		print("Looking for address ending in '" + desired_tail + "'...")
+		logger.debug("Looking for address ending in '%s'..." % (desired_tail,))
 		while True:
 			kp = Keypair.random()
 			if kp.address().decode()[-len(desired_tail):] == desired_tail:
@@ -134,7 +137,7 @@ def set_account_signers(pool_keypair, threshold):
 
 
 def main():
-	pool_kp = generate_pool_keypair()
+	pool_kp = generate_pool_keypair(sys.argv[1] if sys.argv else None)
 	print("Pool keypair: %s | %s" % (
 		pool_kp.address().decode(), pool_kp.seed().decode()))
 
