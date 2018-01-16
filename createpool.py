@@ -21,7 +21,6 @@ SIGNING_THRESHOLD = {
 STARTING_BALANCE = "5"
 
 network = "PUBLIC"
-horizon = horizon_livenet()
 
 
 def generate_pool_keypair(desired_tail=None):
@@ -86,7 +85,7 @@ def get_signers(file_path):
 	return signers
 
 
-def set_account_signers(pool_keypair, signers, threshold):
+def set_account_signers(horizon, pool_keypair, signers, threshold):
 	pool_address = pool_keypair.address().decode()
 
 	operations = [
@@ -128,32 +127,35 @@ def set_account_signers(pool_keypair, signers, threshold):
 	response = horizon.submit(xdr)
 
 	if "_links" in response:
-		print(
+		logger.debug(
 			"Set options transaction href: ",
 			response["_links"]["transaction"]["href"])
-		print("Created successfully!")
+		logger.debug("Created successfully!")
+		return True
 	else:
-		print("Failed to set account signers, dumping response:")
-		print(response)
+		logger.error("Failed to set account signers, dumping response:")
+		logger.error(response)
+		return False
 
 
 @click.command()
 @click.option('--desired-tail', type=str, default=None)
 @click.option('--funding-account-secret-key', type=str, prompt=True)
 @click.option('--network-id', type=click.Choice(['TESTNET', 'PUBLIC']))
-@click.option('--signers-file', type=click.Path(exists=True), default='signers.txt')
+@click.option(
+	'--signers-file', type=click.Path(exists=True), default='signers.txt')
 def main(
 	desired_tail, funding_account_secret_key, network_id, signers_file):
 
 	horizon = (horizon_livenet() if network == 'PUBLIC' else horizon_testnet())
 	pool_kp = generate_pool_keypair(desired_tail)
-	print("Pool keypair: %s | %s" % (
+	logger.info("Pool keypair: %s | %s" % (
 		pool_kp.address().decode(), pool_kp.seed().decode()))
 
 	if create_pool_account(
 		horizon, network_id, funding_account_secret_key, pool_kp):
 			signers = get_signers(signers_file)
-			set_account_signers(pool_kp, signers, SIGNING_THRESHOLD)
+			set_account_signers(horizon, pool_kp, signers, SIGNING_THRESHOLD)
 
 
 if __name__ == "__main__":
