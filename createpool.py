@@ -79,14 +79,14 @@ def create_pool_account(horizon, network_id, account_secret_key, pool_keypair):
 		return False
 
 
-def get_signers():
+def get_signers(file_path):
 	signers = []
-	with open('signers.txt') as f:
+	with open(file_path) as f:
 		signers = f.read().splitlines()
 	return signers
 
 
-def set_account_signers(pool_keypair, threshold):
+def set_account_signers(pool_keypair, signers, threshold):
 	pool_address = pool_keypair.address().decode()
 
 	operations = [
@@ -96,7 +96,7 @@ def set_account_signers(pool_keypair, threshold):
 			"signer_type": "ed25519PublicKey",
 			"source_account": pool_address
 		})
-		for signer_address in get_signers()
+		for signer_address in signers
 	]
 
 	operations.append(
@@ -141,7 +141,10 @@ def set_account_signers(pool_keypair, threshold):
 @click.option('--desired-tail', type=str, default=None)
 @click.option('--funding-account-secret-key', type=str, prompt=True)
 @click.option('--network-id', type=click.Choice(['TESTNET', 'PUBLIC']))
-def main(desired_tail, funding_account_secret_key, network_id):
+@click.option('--signers-file', type=click.Path(exists=True), default='signers.txt')
+def main(
+	desired_tail, funding_account_secret_key, network_id, signers_file):
+
 	horizon = (horizon_livenet() if network == 'PUBLIC' else horizon_testnet())
 	pool_kp = generate_pool_keypair(desired_tail)
 	print("Pool keypair: %s | %s" % (
@@ -149,7 +152,8 @@ def main(desired_tail, funding_account_secret_key, network_id):
 
 	if create_pool_account(
 		horizon, network_id, funding_account_secret_key, pool_kp):
-			set_account_signers(pool_kp, SIGNING_THRESHOLD)
+			signers = get_signers(signers_file)
+			set_account_signers(pool_kp, signers, SIGNING_THRESHOLD)
 
 
 if __name__ == "__main__":

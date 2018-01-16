@@ -1,10 +1,13 @@
 from unittest import TestCase
+import os
+import tempfile
 import json
 
 from stellar_base.keypair import Keypair
 from stellar_base.horizon import horizon_testnet
 
-from createpool import (generate_pool_keypair, create_pool_account)
+from createpool import (
+    generate_pool_keypair, create_pool_account, get_signers)
 
 import responses
 from mock import patch
@@ -66,3 +69,16 @@ class CreatePoolAccountTestCase(TestCase):
 
         self.assertTrue(create_pool_account(
             horizon_testnet(), 'TESTNET', account_kp.seed(), pool_kp))
+
+
+class SetAccountSigners(TestCase):
+
+    def test_get_signers(self):
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
+        tmp_file.write(b'foo\nbar\nbaz\n')
+        tmp_file.close()
+
+        self.addCleanup(os.remove, tmp_file.name)
+
+        signers = get_signers(tmp_file.name)
+        self.assertEqual(signers, ['foo', 'bar', 'baz'])
