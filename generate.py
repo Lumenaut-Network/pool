@@ -1,10 +1,12 @@
 import sqlite3
+import psycopg2
 import json
 import base64
 
 from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 from stellar_base.asset import Asset
+from stellar_base.memo import TextMemo
 from stellar_base.operation import Payment
 from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
@@ -13,14 +15,25 @@ from stellar_base.utils import AccountNotExistError
 
 pool_address = "GCFXD4OBX4TZ5GGBWIXLIJHTU2Z6OWVPYYU44QSKCCU7P2RGFOOHTEST"
 network = "TESTNET"
-db_address = "../core/stellar.db"
+horizon = horizon_testnet()
+
+#db_address = "../core/stellar.db"
+select_total_votes = "SELECT Sum(balance) FROM accounts WHERE `inflationdest`=?"
 select_account_op = """
 	SELECT `accounts`.`accountid`, `balance`, `datavalue` FROM `accounts`
 	LEFT JOIN `accountdata`
 		ON `accountdata`.`accountid` = `accounts`.`accountid`
 		AND `dataname`='lumenaut.net donation'
 	WHERE `inflationdest`=?"""
-horizon = horizon_testnet()
+
+db_address = "dbname='core' user='stellar' host='localhost' password='testdb'"
+psql_total_votes = "SELECT SUM(balance) FROM accounts WHERE inflationdest = %s"
+psql_account_op = """
+	SELECT accounts.accountid, balance, datavalue FROM accounts
+	LEFT JOIN accountdata
+		ON accountdata.accountid = accounts.accountid
+		AND dataname LIKE 'lumenaut.net%%'
+	WHERE inflationdest = %s"""
 
 BASE_FEE = 100
 XLM_STROOP = 10000000
@@ -42,13 +55,12 @@ def XLM_Decimal(n):
 
 def donate_votes(donor_id, donation_data):
 	donation_data = base64.b64decode(donation_data).decode("utf-8")
-
 	# Get the donation percentage and destination address from the
 	# base64 data string
 	try:
 		pct, donee_address = donation_data.split("%")
-		pct = XLM_Decimal(pct)
-		if pct < 0 or pct > 100:  # Accept only [0,100]
+		pct = XLM_Decimal(pct) / 100
+		if pct < 0 or pct > 1:  # Accept only [0,1]
 			return
 	except ValueError:
 		# Split didn't produce two elements (no '%' char in the donation_string)
@@ -68,15 +80,16 @@ def donate_votes(donor_id, donation_data):
 		else:
 			voters[donee_address] = [amt, amt]
 
-
 def accounts_payouts(conn, pool_addr, inflation, size=100):
 	# Extract the sum of all votes from the DB
 	cur = conn.cursor()
-	cur.execute("SELECT Sum(balance) FROM accounts WHERE `inflationdest`=?", (
-		pool_address, ))
+	#cur.execute(select_total_votes, (pool_address, ))
+	cur.execute(psql_total_votes, (pool_address, ))
+	total_votes = Decimal(cur.fetchone()[0]) / XLM_STROOP
 
 	# Extract Addresses, votes and donation lists for each voter from the DB
-	cur.execute(select_account_op, (pool_addr, ))
+	#cur.execute(select_account_op, (pool_addr, ))
+	cur.execute(psql_account_op, (pool_addr, ))
 	while True:
 		batch = cur.fetchmany(size)
 		if not batch or batch == ():
@@ -109,9 +122,12 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 		# Make sure the pool does not create a payout to itself
 		if aid == pool_addr:
 			continue
+		# Calculate the payout for this voter: inflation * (votes / total_votes)
+		pay_pct = votes[VOTES_NOW] / total_votes
+		pay = XLM_Decimal(inflation * pay_pct)
 		# Add payout to the batch (minus the BASE_FEE), and start a
 		# new one if 'size' is reached
-		batch.append(aid, votes[VOTES_NOW] - XLM_Decimal(BASE_FEE / XLM_STROOP))
+		batch.append([aid, pay - XLM_Decimal(BASE_FEE / XLM_STROOP)])
 		if len(batch) >= size:
 			payouts.append(batch)  # All these payments will be a single transaction
 			batch = []
@@ -130,38 +146,40 @@ def make_payment_op(account_id, amount):
 def main(inflation):
 	# TODO: Let user select the connection type
 	# The stellar/quickstart Docker image uses PostgreSQL
-	conn = sqlite3.connect(db_address)
+	#conn = sqlite3.connect(db_address)
+	conn = psycopg2.connect(db_address)
 
 	# Get the next sequence number for the transactions
 	sequence = horizon.account(pool_address).get('sequence')
 	inflation = XLM_Decimal(inflation)
-	transactions = []
 	total_payments_cost = 0
 	num_payments = 0
 	total_fee_cost = 0
 
 	# Create one transaction for each batch
+	transactions = []
 	for batch in accounts_payouts(conn, pool_address, inflation):
 		op_count = 0
 		ops = {'sequence': sequence, 'operations': []}
 		for aid, amount in batch:
-			# Check if the payment destination (aid) is valid
-			try:
-				acc = horizon.get(aid)
-			except AccountNotExistError:
-				continue
-			if not acc:
-				continue
+			# Check if the payment destination (aid) is valid (TOO SLOW!)
+			#try:
+			#	acc = horizon.account(aid)
+			#except AccountNotExistError:
+			#	continue
+			#if not acc:
+			#	continue
 			# Include payment operation on ops{}
-			ops['operations'].append(aid, amount)
+			ops['operations'].append(make_payment_op(aid, amount))
 			op_count += 1
 
 		# Build transaction
 		tx = Transaction(
-			source=pool_address,
-			opts=ops
+			source = pool_address,
+			opts = ops
 		)
-		tx.fee = op_count * BASE_FEE
+		tx.memo = TextMemo("Thanks from lumenaut.net!");
+		tx.fee = op_count * BASE_FEE;
 		envelope = Te(tx=tx, opts={"network_id": network})
 		# Append the transaction plain-text (JSON) on the list
 		transactions.append(envelope.xdr().decode("utf-8"))
@@ -176,7 +194,7 @@ def main(inflation):
 		sequence = int(sequence) + 1
 
 	print((
-		"Stats: \n"
+		"## Stats ## \n"
 		"Inflation received: %s\n"
 		"A total of %s XLM paid over %s inflation payments "
 		"using %s XLM in fees. \n"

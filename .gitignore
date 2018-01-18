@@ -1,2 +1,4 @@
 .cache/
 __pycache__/
+dbname='core' user='stellar' host='localhost' password='testdb'
+transactions.json

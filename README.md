@@ -9,10 +9,10 @@ Requires the stellar-base package
 `watch.py` will monitor operations on the stellar network, looking for INFLATION. Once seen, it triggers the payout calculations to begin
 
 ## 3
-`generate.py` will scrape the stellar.db file used by stellar-core & create the payment transactions for that inflation period. These are json-encoded and saved into `transactions.dat`
+`generate.py` will scrape the stellar.db file used by stellar-core & create the payment transactions for that inflation period. These are json-encoded and saved into `transactions.json`
 
 ## 4
-`sign.py` or `sign.html` can be used to sign the `transactions.dat` file in bulk, making it easy for the signatories to sign off on that weeks payout. After signing, the updated `transactions.dat` file will need to be shared with the next signer (TODO: make a web app for this / client downloads transaction.dat, signs, uploads updated back to server for next signer)
+`sign.py` or `sign.html` can be used to sign the `transactions.json` file in bulk, making it easy for the signatories to sign off on that weeks payout. After signing, the updated `transactions.json` file will need to be shared with the next signer (TODO: make a web app for this / client downloads transaction.dat, signs, uploads updated back to server for next signer)
 
 ## 5 
 Everyone gets free money every week!
