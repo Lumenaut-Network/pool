@@ -8,11 +8,11 @@ from stellar_base.asset import Asset
 from stellar_base.operation import Payment
 from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
-from stellar_base.horizon import horizon_testnet
+from stellar_base.horizon import horizon_testnet, horizon_livenet
 from stellar_base.utils import AccountNotExistError
 
 pool_address = "GCFXD4OBX4TZ5GGBWIXLIJHTU2Z6OWVPYYU44QSKCCU7P2RGFOOHTEST"
-network = "TESTNET"
+
 db_address = "../core/stellar.db"
 select_account_op = """
 	SELECT `accounts`.`accountid`, `balance`, `datavalue` FROM `accounts`
@@ -20,6 +20,8 @@ select_account_op = """
 		ON `accountdata`.`accountid` = `accounts`.`accountid`
 		AND `dataname`='lumenaut.net donation'
 	WHERE `inflationdest`=?"""
+
+network = "TESTNET"
 horizon = horizon_testnet()
 
 BASE_FEE = 100
@@ -111,7 +113,7 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 			continue
 		# Add payout to the batch (minus the BASE_FEE), and start a
 		# new one if 'size' is reached
-		batch.append(aid, votes[VOTES_NOW] - XLM_Decimal(BASE_FEE / XLM_STROOP))
+		batch.append((aid, votes[VOTES_NOW] - XLM_Decimal(BASE_FEE / XLM_STROOP)))
 		if len(batch) >= size:
 			payouts.append(batch)  # All these payments will be a single transaction
 			batch = []
@@ -145,15 +147,8 @@ def main(inflation):
 		op_count = 0
 		ops = {'sequence': sequence, 'operations': []}
 		for aid, amount in batch:
-			# Check if the payment destination (aid) is valid
-			try:
-				acc = horizon.get(aid)
-			except AccountNotExistError:
-				continue
-			if not acc:
-				continue
 			# Include payment operation on ops{}
-			ops['operations'].append(aid, amount)
+			ops['operations'].append(make_payment_op(aid, amount))
 			op_count += 1
 
 		# Build transaction
@@ -177,10 +172,10 @@ def main(inflation):
 
 	print((
 		"Stats: \n"
-		"Inflation received: %s\n"
-		"A total of %s XLM paid over %s inflation payments "
+		"\tInflation received: %s\n"
+		"\tA total of %s XLM paid over %s inflation payments "
 		"using %s XLM in fees. \n"
-		"Number of people that donated votes: %s\n") % (
+		"\tNumber of people that donated votes: %s\n") % (
 			inflation,
 			total_payments_cost,
 			num_payments,
@@ -189,7 +184,7 @@ def main(inflation):
 
 	with open("transactions.json", 'w') as outf:
 		json.dump(transactions, outf)
-	print("Done. Output to transactions.json")
+	print("Output to transactions.json")
 
 
 TEST_AMT = 49855.2650163
