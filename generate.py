@@ -14,27 +14,22 @@ from stellar_base.utils import AccountNotExistError
 pool_address = "GCFXD4OBX4TZ5GGBWIXLIJHTU2Z6OWVPYYU44QSKCCU7P2RGFOOHTEST"
 
 db_address = "../core/stellar.db"
-select_account_op = """
-	SELECT `accounts`.`accountid`, `balance`, `datavalue` FROM `accounts`
-	LEFT JOIN `accountdata`
-		ON `accountdata`.`accountid` = `accounts`.`accountid`
-		AND `dataname`='lumenaut.net donation'
-	WHERE `inflationdest`=?"""
+select_donations_op = """
+	SELECT * FROM accountdata WHERE
+	`dataname` LIKE 'Lumenaut.net donation%'"""
+
+select_accounts_op = """
+	SELECT `accounts`.`accountid`, `balance` FROM `accounts`
+	WHERE `inflationdest`='%s'""" % pool_address
 
 network = "TESTNET"
 horizon = horizon_testnet()
 
 BASE_FEE = 100
 XLM_STROOP = 10000000
-VOTES_ORG = 0
-VOTES_NOW = 1
+XLM_FEE = Decimal(BASE_FEE / XLM_STROOP)
 
-# Voters is a dictionary that maps IDs to how many votes they have
-# (before and after the donations)
-voters = {}
-# Donors is a dictionary that maps IDs to a list of donation_data
-# (number%address string encoded in base64)
-donors = {}
+donation_payouts = {}
 
 
 def XLM_Decimal(n):
@@ -42,83 +37,83 @@ def XLM_Decimal(n):
 	return Decimal(n).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)
 
 
-def donate_votes(donor_id, donation_data):
+def parse_donation(donation_data):
 	donation_data = base64.b64decode(donation_data).decode("utf-8")
 
 	# Get the donation percentage and destination address from the
 	# base64 data string
 	try:
-		pct, donee_address = donation_data.split("%")
-		pct = XLM_Decimal(pct)
-		if pct < 0 or pct > 100:  # Accept only [0,100]
-			return
+		pct, address = donation_data.split("%")
+		pct = Decimal(pct)
+		if pct < 0 or pct > 100 or len(address) != 52 or address[0] != 'G':
+			return None
+		else:
+			return (address, pct / 100)
 	except ValueError:
 		# Split didn't produce two elements (no '%' char in the donation_string)
-		return
+		return None
 	except InvalidOperation:
 		# XLM_Decimal() can't produce a valid value (malformed string)
-		return
-
-	# Percentage is a valid number. If donor still has votes, donate
-	if voters[donor_id][VOTES_NOW] >= 0:
-		# To calculate the value to donate, we use the donor's original balance
-		amt = XLM_Decimal(voters[donor_id][VOTES_ORG] * pct)
-		voters[donor_id][VOTES_NOW] -= amt
-		# If donee is a 'new voter', set both values (but change only the second)
-		if donee_address in voters.keys():
-			voters[donee_address][VOTES_NOW] += amt
-		else:
-			voters[donee_address] = [amt, amt]
+		return None
 
 
 def accounts_payouts(conn, pool_addr, inflation, size=100):
-	# Extract the sum of all votes from the DB
 	cur = conn.cursor()
-	cur.execute("SELECT Sum(balance) FROM accounts WHERE `inflationdest`=?", (
-		pool_address, ))
+	cur.execute("SELECT Sum(balance) FROM accounts WHERE `inflationdest`=?", (pool_address,))
 
-	# Extract Addresses, votes and donation lists for each voter from the DB
-	cur.execute(select_account_op, (pool_addr, ))
-	while True:
-		batch = cur.fetchmany(size)
-		if not batch or batch == ():
-			break
-		# Populate the dictionaries of voters and donors
-		for aid, balance, donation_data in batch:
-			if aid not in voters.keys():
-				votes = Decimal(balance) / XLM_STROOP
-				# Add twice because we want the value before and after the donations
-				voters[aid] = [votes, votes]
-			if donation_data:
-				if aid not in donors.keys():
-					donors[aid] = [donation_data]
-				else:
-					donors[aid].append(donation_data)
+	total_balance = XLM_Decimal(cur.fetchone()[0])
 
-	# Each donor may have one or more donation_data
-	for aid in donors.keys():
-		for donation_data in donors[aid]:
-			donate_votes(aid, donation_data)
+	cur.execute(select_donations_op)
 
-	# Now voters[address][VOTES_NOW] holds the correct values for every voter.
-	# Calculate payouts in a list of batches, each containing 'size' (default=100)
+	donations = {}
+	for row in cur:
+		donor = row[0]
+		donation = parse_donation(row[2])
+		
+		if donation != None:
+			donation_address, percentage = donation
+
+			if donor not in donations:
+				donations[donor] = {}
+			donations[donor][donation_address] = percentage
+
 	payouts = []
 	batch = []
-	for aid, votes in voters.items():
-		# Make sure not to create payouts with zero or negative values
-		if votes[VOTES_NOW] <= XLM_Decimal(BASE_FEE / XLM_STROOP):
-			continue
-		# Make sure the pool does not create a payout to itself
-		if aid == pool_addr:
-			continue
-		# Add payout to the batch (minus the BASE_FEE), and start a
-		# new one if 'size' is reached
-		batch.append((aid, votes[VOTES_NOW] - XLM_Decimal(BASE_FEE / XLM_STROOP)))
-		if len(batch) >= size:
-			payouts.append(batch)  # All these payments will be a single transaction
+
+	cur.execute(select_accounts_op)
+	for row in cur:
+		accountid = row[0]
+		account_balance = XLM_Decimal(row[1])
+		account_inflation = (account_balance / total_balance) * inflation
+
+		if accountid in donations:
+			inflation_sub = 0
+
+			for address in donations[accountid]:
+				pct = donations[accountid][address]
+				donation_amt = account_inflation * pct
+				donation_payouts[address] = XLM_Decimal(donation_payouts.get(address, 0) + donation_amt)
+				inflation_sub += donation_amt + XLM_FEE # take the transaction fee from donations (even though they will be bundled)
+
+			account_inflation -= inflation_sub
+
+		batch.append((accountid, XLM_Decimal(account_inflation - XLM_FEE)))
+
+		if len(batch) >= 100:
+			payouts.append(batch)
 			batch = []
-	# The last batch may have less than 'size' payments
-	payouts.append(batch)
+
+	for address in donation_payouts:
+		batch.append((address, donation_payouts[address]))
+
+		if len(batch) >= 100:
+			payouts.append(batch)
+			batch = []
+
+	if len(batch) > 0:
+		payouts.append(batch)
+		batch = []
+
 	return payouts
 
 
@@ -126,7 +121,8 @@ def make_payment_op(account_id, amount):
 	return Payment({
 		'destination': account_id,
 		'amount': str(amount),
-		'asset': Asset('XLM')})
+		'asset': Asset('XLM')
+	})
 
 
 def main(inflation):
@@ -175,12 +171,12 @@ def main(inflation):
 		"\tInflation received: %s\n"
 		"\tA total of %s XLM paid over %s inflation payments "
 		"using %s XLM in fees. \n"
-		"\tNumber of people that donated votes: %s\n") % (
+		"\tNumber of unique donation addresses: %s\n") % (
 			inflation,
 			total_payments_cost,
 			num_payments,
 			total_fee_cost,
-			len(donors),))
+			len(donation_payouts),))
 
 	with open("transactions.json", 'w') as outf:
 		json.dump(transactions, outf)
