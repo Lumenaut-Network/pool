@@ -45,7 +45,7 @@ def parse_donation(donation_data):
 	try:
 		pct, address = donation_data.split("%")
 		pct = Decimal(pct)
-		if pct < 0 or pct > 100 or len(address) != 52 or address[0] != 'G':
+		if pct < 0 or pct > 100 or len(address) != 56 or address[0] != 'G':
 			return None
 		else:
 			return (address, pct / 100)
