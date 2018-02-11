@@ -1,20 +1,6 @@
 import logging
 import time
 import sys
-
-logger = logging.getLogger("payout")	
-
-logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
-logger.setLevel(logging.DEBUG)
-
-fileHandler =logging.FileHandler("{0}/{1}.log".format("./logs", time.strftime("%Y%m%d-%H%M%S")))
-fileHandler.setFormatter(logFormatter)
-logger.addHandler(fileHandler)
-
-consoleHandler = logging.StreamHandler(sys.stdout)
-consoleHandler.setFormatter(logFormatter)
-logger.addHandler(consoleHandler)
-
 import sqlite3
 import json
 import base64
@@ -25,8 +11,25 @@ from stellar_base.asset import Asset
 from stellar_base.operation import Payment
 from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
-from stellar_base.horizon import horizon_testnet, horizon_livenet
-from stellar_base.utils import AccountNotExistError
+from stellar_base.horizon import horizon_testnet
+
+logger = logging.getLogger("payout")
+
+logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] \
+[%(levelname)-5.5s]  %(message)s")
+
+logger.setLevel(logging.DEBUG)
+
+fileHandler = logging.FileHandler("{0}/{1}.log".format(
+	"./logs",
+	time.strftime("%Y%m%d-%H%M%S")))
+
+fileHandler.setFormatter(logFormatter)
+logger.addHandler(fileHandler)
+
+consoleHandler = logging.StreamHandler(sys.stdout)
+consoleHandler.setFormatter(logFormatter)
+logger.addHandler(consoleHandler)
 
 
 pool_address = "GCFXD4OBX4TZ5GGBWIXLIJHTU2Z6OWVPYYU44QSKCCU7P2RGFOOHTEST"
@@ -77,7 +80,8 @@ def parse_donation(donation_data):
 
 def accounts_payouts(conn, pool_addr, inflation, size=100):
 	cur = conn.cursor()
-	cur.execute("SELECT Sum(balance) FROM accounts WHERE `inflationdest`=?", (pool_address,))
+	cur.execute("SELECT Sum(balance) FROM accounts \
+	WHERE `inflationdest`=?", (pool_address,))
 
 	total_balance = XLM_Decimal(cur.fetchone()[0])
 
@@ -90,8 +94,8 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 	for row in cur:
 		donor = row[0]
 		donation = parse_donation(row[2])
-		
-		if donation != None:
+
+		if donation is not None:
 			donation_address, percentage = donation
 
 			if donor not in donations:
@@ -113,12 +117,17 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 			for address in donations[accountid]:
 				pct = donations[accountid][address]
 				donation_amt = account_inflation * pct
-				donation_payouts[address] = XLM_Decimal(donation_payouts.get(address, 0) + donation_amt)
-				inflation_sub += donation_amt + XLM_FEE # take the transaction fee from donations (even though they will be bundled)
+				donation_payouts[address] = XLM_Decimal(
+					donation_payouts.get(address, 0) + donation_amt)
+				# take the transaction fee from donations
+				# (even though they will be bundled)
+				inflation_sub += donation_amt + XLM_FEE
 
 			account_inflation -= inflation_sub
 
-		logger.debug("Created batch %(accountid)s | balance: %(account_balance)s | inflation: %(account_inflation)s")
+		logger.debug("Created batch %(accountid)s | \
+		balance: %(account_balance)s | \
+		inflation: %(account_inflation)s")
 
 		batch.append((accountid, XLM_Decimal(account_inflation - XLM_FEE)))
 
@@ -175,10 +184,10 @@ def main(inflation):
 		ops = {'sequence': sequence, 'operations': []}
 		for aid, amount in batch:
 			# Include payment operation on ops{}
-			payment = make_payment_op(aid, amount)
+			paymentOp = make_payment_op(aid, amount)
 
-			logger.debug("\t\t\Created Payment %(payment)s")
-			ops['operations'].append(payment)
+			logger.debug("\t\t\Created Payment %(paymentOp)s")
+			ops['operations'].append(paymentOp)
 			op_count += 1
 
 		logger.debug("\t\tBuilding Transaction...")
@@ -192,7 +201,7 @@ def main(inflation):
 		transaction = envelope.xdr().decode("utf-8")
 		logger.debug("\t\tTransaction Created")
 		logger.debug("\t\t%(transaction)s")
-		
+
 		transactions.append(transaction)
 
 		# Calculate stats
