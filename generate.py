@@ -120,6 +120,7 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 def make_payment_op(account_id, amount):
 	return Payment({
 		'destination': account_id,
+		'source': pool_address,
 		'amount': str(amount),
 		'asset': Asset('XLM')
 	})
