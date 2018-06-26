@@ -1,3 +1,6 @@
+import logging
+import time
+import sys
 import sqlite3
 import json
 import base64
@@ -8,8 +11,26 @@ from stellar_base.asset import Asset
 from stellar_base.operation import Payment
 from stellar_base.transaction import Transaction
 from stellar_base.transaction_envelope import TransactionEnvelope as Te
-from stellar_base.horizon import horizon_testnet, horizon_livenet
-from stellar_base.utils import AccountNotExistError
+from stellar_base.horizon import horizon_testnet
+
+logger = logging.getLogger("payout")
+
+logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] \
+[%(levelname)-5.5s]  %(message)s")
+
+logger.setLevel(logging.DEBUG)
+
+fileHandler = logging.FileHandler("{0}/{1}.log".format(
+	"./logs",
+	time.strftime("%Y%m%d-%H%M%S")))
+
+fileHandler.setFormatter(logFormatter)
+logger.addHandler(fileHandler)
+
+consoleHandler = logging.StreamHandler(sys.stdout)
+consoleHandler.setFormatter(logFormatter)
+logger.addHandler(consoleHandler)
+
 
 pool_address = "GCFXD4OBX4TZ5GGBWIXLIJHTU2Z6OWVPYYU44QSKCCU7P2RGFOOHTEST"
 
@@ -59,9 +80,13 @@ def parse_donation(donation_data):
 
 def accounts_payouts(conn, pool_addr, inflation, size=100):
 	cur = conn.cursor()
-	cur.execute("SELECT Sum(balance) FROM accounts WHERE `inflationdest`=?", (pool_address,))
+	cur.execute("SELECT Sum(balance) FROM accounts \
+	WHERE `inflationdest`=?", (pool_address,))
 
 	total_balance = XLM_Decimal(cur.fetchone()[0])
+
+	logger.debug("Total Balance: %(total_balance)s")
+	logger.debug("Inflation: %(inflation)s")
 
 	cur.execute(select_donations_op)
 
@@ -69,8 +94,8 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 	for row in cur:
 		donor = row[0]
 		donation = parse_donation(row[2])
-		
-		if donation != None:
+
+		if donation is not None:
 			donation_address, percentage = donation
 
 			if donor not in donations:
@@ -92,10 +117,17 @@ def accounts_payouts(conn, pool_addr, inflation, size=100):
 			for address in donations[accountid]:
 				pct = donations[accountid][address]
 				donation_amt = account_inflation * pct
-				donation_payouts[address] = XLM_Decimal(donation_payouts.get(address, 0) + donation_amt)
-				inflation_sub += donation_amt + XLM_FEE # take the transaction fee from donations (even though they will be bundled)
+				donation_payouts[address] = XLM_Decimal(
+					donation_payouts.get(address, 0) + donation_amt)
+				# take the transaction fee from donations
+				# (even though they will be bundled)
+				inflation_sub += donation_amt + XLM_FEE
 
 			account_inflation -= inflation_sub
+
+		logger.debug("Created batch %(accountid)s | \
+		balance: %(account_balance)s | \
+		inflation: %(account_inflation)s")
 
 		batch.append((accountid, XLM_Decimal(account_inflation - XLM_FEE)))
 
@@ -129,26 +161,37 @@ def make_payment_op(account_id, amount):
 def main(inflation):
 	# TODO: Let user select the connection type
 	# The stellar/quickstart Docker image uses PostgreSQL
-	conn = sqlite3.connect(db_address)
 
-	# Get the next sequence number for the transactions
+	logger.debug("Connecting to database...")
+	conn = sqlite3.connect(db_address)
+	logger.debug("Connected!")
+
+	logger.debug("Getting the next transaction sequence number...")
 	sequence = horizon.account(pool_address).get('sequence')
+	logger.debug("Done! - Transaction Sequence: %(sequence)s")
+
 	inflation = XLM_Decimal(inflation)
 	transactions = []
 	total_payments_cost = 0
 	num_payments = 0
 	total_fee_cost = 0
 
+	logger.debug("Processing account batches...")
 	# Create one transaction for each batch
 	for batch in accounts_payouts(conn, pool_address, inflation):
+		logger.debug("\tProcessing %(batch.aid)s with %(batch.amount)s")
+
 		op_count = 0
 		ops = {'sequence': sequence, 'operations': []}
 		for aid, amount in batch:
 			# Include payment operation on ops{}
-			ops['operations'].append(make_payment_op(aid, amount))
+			paymentOp = make_payment_op(aid, amount)
+
+			logger.debug("\t\t\Created Payment %(paymentOp)s")
+			ops['operations'].append(paymentOp)
 			op_count += 1
 
-		# Build transaction
+		logger.debug("\t\tBuilding Transaction...")
 		tx = Transaction(
 			source=pool_address,
 			opts=ops
@@ -156,7 +199,11 @@ def main(inflation):
 		tx.fee = op_count * BASE_FEE
 		envelope = Te(tx=tx, opts={"network_id": network})
 		# Append the transaction plain-text (JSON) on the list
-		transactions.append(envelope.xdr().decode("utf-8"))
+		transaction = envelope.xdr().decode("utf-8")
+		logger.debug("\t\tTransaction Created")
+		logger.debug("\t\t%(transaction)s")
+
+		transactions.append(transaction)
 
 		# Calculate stats
 		total_fee_cost += XLM_Decimal(tx.fee) / XLM_STROOP
@@ -167,7 +214,7 @@ def main(inflation):
 		# Prepare the next sequence number for the transactions
 		sequence = int(sequence) + 1
 
-	print((
+	logger.info((
 		"Stats: \n"
 		"\tInflation received: %s\n"
 		"\tA total of %s XLM paid over %s inflation payments "
@@ -181,7 +228,7 @@ def main(inflation):
 
 	with open("transactions.json", 'w') as outf:
 		json.dump(transactions, outf)
-	print("Output to transactions.json")
+	logger.info("Output to transactions.json")
 
 
 TEST_AMT = 49855.2650163
